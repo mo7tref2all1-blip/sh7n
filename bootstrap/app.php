@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Middleware\EnsureNotInstalled;
 use App\Http\Middleware\EnsureUserType;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
@@ -19,6 +20,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'user_type' => EnsureUserType::class,
             'role' => \Spatie\Permission\Middleware\RoleMiddleware::class,
             'permission' => \Spatie\Permission\Middleware\PermissionMiddleware::class,
+            'ensure_not_installed' => EnsureNotInstalled::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

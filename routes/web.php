@@ -14,6 +14,7 @@ use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\Branch\DashboardController as BranchDashboardController;
 use App\Http\Controllers\Driver\DashboardController as DriverDashboardController;
 use App\Http\Controllers\Driver\ShipmentActionController;
+use App\Http\Controllers\Install\InstallController;
 use App\Http\Controllers\Merchant\DashboardController as MerchantDashboardController;
 use App\Http\Controllers\Merchant\ShipmentController as MerchantShipmentController;
 use App\Http\Controllers\Merchant\WalletController as MerchantWalletController;
@@ -22,6 +23,15 @@ use App\Models\User;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', fn () => redirect()->route('login'));
+
+// No-SSH web installer (docs/08 § 8.2.5) — locked shut permanently once installed.
+Route::middleware('ensure_not_installed')->prefix('install')->name('install.')->group(function () {
+    Route::get('/', [InstallController::class, 'welcome'])->name('welcome');
+    Route::post('/database', [InstallController::class, 'storeDatabase'])->name('database');
+    Route::get('/migrate', [InstallController::class, 'migrate'])->name('migrate');
+    Route::get('/admin', [InstallController::class, 'showAdminForm'])->name('admin.form');
+    Route::post('/admin', [InstallController::class, 'storeAdmin'])->name('admin.store');
+});
 
 Route::get('/track/{trackingNumber}', [TrackingController::class, 'show'])->name('track.show');
 Route::post('/track/{trackingNumber}/reschedule', [TrackingController::class, 'reschedule'])->name('track.reschedule');

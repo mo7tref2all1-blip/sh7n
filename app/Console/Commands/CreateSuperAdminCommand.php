@@ -25,10 +25,16 @@ class CreateSuperAdminCommand extends Command
 
     public function handle(): int
     {
-        $name = $this->option('name') ?: $this->ask('اسم المدير');
-        $phone = $this->option('phone') ?: $this->ask('رقم الهاتف (للدخول)');
-        $email = $this->option('email') ?: $this->ask('البريد الإلكتروني (اختياري)', '');
-        $password = $this->option('password') ?: $this->secret('كلمة المرور');
+        // Options are checked with !== null (not truthy) so that a programmatic caller
+        // (e.g. the web installer via Artisan::call, which always passes every option —
+        // even an intentionally blank --email) never falls through to an interactive
+        // ask()/confirm(), which would otherwise hang waiting for input that can't come.
+        $calledProgrammatically = $this->option('name') !== null;
+
+        $name = $this->option('name') ?? $this->ask('اسم المدير');
+        $phone = $this->option('phone') ?? $this->ask('رقم الهاتف (للدخول)');
+        $email = $this->option('email') !== null ? $this->option('email') : $this->ask('البريد الإلكتروني (اختياري)', '');
+        $password = $this->option('password') ?? $this->secret('كلمة المرور');
 
         $validator = Validator::make(
             compact('name', 'phone', 'email', 'password'),
@@ -51,7 +57,10 @@ class CreateSuperAdminCommand extends Command
         $existing = User::where('phone', $phone)->first();
 
         if ($existing) {
-            if (! $this->confirm("يوجد مستخدم بهذا الرقم بالفعل ({$existing->name}) — هل تريد ترقيته لـ Super Admin وتحديث كلمة المرور؟")) {
+            $shouldPromote = $calledProgrammatically
+                || $this->confirm("يوجد مستخدم بهذا الرقم بالفعل ({$existing->name}) — هل تريد ترقيته لـ Super Admin وتحديث كلمة المرور؟");
+
+            if (! $shouldPromote) {
                 return self::FAILURE;
             }
 

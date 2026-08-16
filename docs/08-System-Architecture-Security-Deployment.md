@@ -60,7 +60,7 @@ flowchart TB
 1. إنشاء قاعدة بيانات MySQL ومستخدم مخصص عبر "MySQL Databases" في cPanel، ومنحه كل الصلاحيات على القاعدة فقط (لا صلاحيات عامة على السيرفر).
 2. رفع الكود عبر Git (`cPanel Git Version Control`) أو عبر SSH + `git clone` مباشرة إلى مجلد خارج `public_html` (مثال: `/home/user/app/`)، مع توجيه Document Root إلى `app/public` فقط (حماية بقية ملفات Laravel من الوصول المباشر عبر الويب).
 3. `composer install --optimize-autoloader --no-dev` عبر SSH.
-4. نسخ `.env.example` إلى `.env` وضبط: `APP_ENV=production`, `APP_DEBUG=false`, بيانات قاعدة البيانات، `CACHE_STORE=database`, `QUEUE_CONNECTION=database`, `SESSION_DRIVER=database`.
+4. نسخ `.env.example` إلى `.env` وضبط: `APP_ENV=production`, `APP_DEBUG=false`, بيانات قاعدة البيانات، `CACHE_STORE=database`, `QUEUE_CONNECTION=database`. الجلسات (`SESSION_DRIVER`) تبقى `file` عمدًا (وليس `database`) — بدون أي جدول مطلوب، فتعمل فورًا من أول طلب حتى قبل تشغيل الـ Migrations، وهو ما يحتاجه خاصةً معالج التثبيت عبر المتصفح (docs/08 § 8.2.5).
 5. `php artisan key:generate`
 6. `php artisan migrate --force` ثم `php artisan db:seed --class=ProductionSeeder` (أدوار وصلاحيات أساسية + بيانات المحافظات/المناطق).
 7. `php artisan storage:link`
@@ -91,6 +91,18 @@ flowchart TB
 | Production | النطاق الرئيسي على cPanel |
 
 النشر من Staging إلى Production عبر Git (فرع `main` محمي، يتطلب Pull Request + مراجعة قبل الدمج).
+
+### 8.2.5 النشر بدون SSH/Terminal (استضافة سحابية بسيطة)
+
+بعض باقات cPanel السحابية الرخيصة لا توفر SSH ولا Terminal إطلاقًا — فقط File Manager وMySQL Databases وCron Jobs. في هذه الحالة `deploy/cpanel-install.sh` (القسم 8.2.2) غير قابل للتشغيل لأنه يحتاج شل. البديل: **معالج تثبيت عبر المتصفح** (`/install`)، مبني داخل التطبيق نفسه، يقوم بنفس الخطوات بدون أي سطر أوامر:
+
+1. تحمّل حزمة جاهزة تتضمن `vendor/` مبني مسبقًا (لأن Composer لن يعمل بدون شل) + `.env` جاهز بمفتاح تشفير (`APP_KEY`) مولّد مسبقًا (لتفادي مشكلة "بيضة ودجاجة" مع الجلسات قبل استكمال الإعداد) + ملف `INSTALL-TOKEN.txt` يحمل رمزًا عشوائيًا فريدًا لهذه الحزمة.
+2. ترفع الحزمة عبر File Manager (Upload → Extract) إلى مجلد **خارج** `public_html`، وتوجّه Document Root لمجلد `public/` بداخلها من cPanel > Domains (متاح بدون SSH في أغلب الحسابات).
+3. تفتح `https://دومينك/install` من المتصفح، تُدخل رمز `INSTALL-TOKEN.txt` وبيانات قاعدة البيانات، فيقوم المعالج بكتابة `.env` وتشغيل الـ Migrations والـ Seeders وإنشاء حساب Super Admin — كل ده عبر HTTP، بدون Artisan CLI.
+4. بعد نجاح التثبيت، يُنشئ المعالج ملف قفل (`storage/installed.lock`) فيغلق نفسه تلقائيًا (أي زيارة لاحقة لـ `/install` تُرجع 404) — لا حاجة لحذف أي ملفات يدويًا، لكن يُفضَّل حذف مجلد `app/Http/Controllers/Install` لاحقًا لتقليل السطح الهجومي إن أمكن الوصول للملفات.
+5. Cron Jobs تُضاف من واجهة cPanel مباشرة (لا تحتاج شل أصلًا — القسم 8.2.3).
+
+**قيد مهم يجب معرفته**: بدون SSH، لا يمكن تشغيل `php artisan` لاحقًا (تحديثات، migrations جديدة، إلخ) إلا عبر ميزة مشابهة داخل لوحة الأدمن نفسها (أوامر محدودة ومُصرَّح بها فقط، وليس تنفيذ كود حر) — هذه نقطة يجب مراعاتها عند التخطيط لآلية التحديثات المستقبلية لو ظل الاستضافة بدون SSH.
 
 ## 8.3 معمارية الأمان (Security Architecture)
 
