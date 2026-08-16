@@ -36,6 +36,7 @@ composer install
 cp .env.example .env
 # للتطوير المحلي السريع بدون MySQL:
 sed -i 's/DB_CONNECTION=mysql/DB_CONNECTION=sqlite/' .env
+sed -i '/^DB_DATABASE=/d' .env   # مهم: احذف DB_DATABASE الخاص بـ MySQL وإلا سيتجاهل Laravel مسار database/database.sqlite
 touch database/database.sqlite
 php artisan key:generate
 php artisan migrate --seed
@@ -70,14 +71,40 @@ php artisan queue:work
 
 ## النشر على cPanel (الإنتاج)
 
-الخطوات التفصيلية الكاملة (بما فيها إعداد Cron بديل Supervisor، الأمان، النسخ الاحتياطي) موجودة في **[docs/08](./docs/08-System-Architecture-Security-Deployment.md)**. ملخص سريع:
+### الطريقة السريعة — سكريبت تثبيت جاهز
+
+بعد رفع/عمل `git clone` للكود داخل مجلد حسابك على cPanel (عبر SSH أو Terminal الموجودة داخل لوحة cPanel نفسها)، وبعد إنشاء قاعدة بيانات MySQL من **cPanel > MySQL Databases**، شغّل:
+
+```bash
+cd ~/اسم-المجلد   # المجلد اللي فيه الكود
+./deploy/cpanel-install.sh
+```
+
+السكريبت هيسألك عن بيانات قاعدة البيانات ورابط الموقع، وهيعمل تلقائيًا: فحص إصدار PHP والإضافات المطلوبة، `composer install`، إعداد `.env`، الـ Migrations، بيانات النظام الأساسية (محافظات مصر + الأدوار + التسعير — **بدون** حسابات تجريبية بكلمات مرور ضعيفة)، `storage:link`، تفعيل الـ Cache، وأخيرًا هيعرض عليك إنشاء أول حساب Super Admin حقيقي. وفي الآخر هيطبعلك بالظبط الخطوتين اليدويتين المتبقيتين (توجيه Document Root، وإضافة Cron Jobs) بمساراتك الفعلية جاهزة للنسخ.
+
+يدعم أيضًا وضع غير تفاعلي (مفيد لو حابب تشغّله كـ deployment script جاهز):
+
+```bash
+./deploy/cpanel-install.sh --db-host=localhost --db-name=user_shipping \
+  --db-user=user_ship --db-pass='...' --app-url=https://ship.example.com \
+  --non-interactive --skip-admin
+# ثم لاحقًا: php artisan app:create-admin
+```
+
+آمن لإعادة التشغيل أكثر من مرة (Idempotent) — لن يستبدل `.env` موجود مسبقًا.
+
+### الخطوات اليدوية (للفهم أو التخصيص)
+
+الخطوات التفصيلية الكاملة (بما فيها إعداد Cron بديل Supervisor، الأمان، النسخ الاحتياطي) موجودة في **[docs/08](./docs/08-System-Architecture-Security-Deployment.md)**. ملخص سريع لما يفعله السكريبت أعلاه داخليًا:
 
 1. أنشئ قاعدة بيانات MySQL من cPanel واضبط بياناتها في `.env` (القيم الافتراضية في `.env.example` تعكس هذا الإعداد).
 2. `composer install --optimize-autoloader --no-dev`
-3. `php artisan key:generate && php artisan migrate --force && php artisan db:seed --class=RolePermissionSeeder --force`
-4. وجّه Document Root لمجلد `public/` فقط.
-5. أضف Cron Job واحد لـ `schedule:run` وآخر لـ `queue:work --stop-when-empty` كل دقيقة (التفاصيل والأسطر الجاهزة في docs/08 § 8.2.3).
-6. `php artisan storage:link`
+3. `php artisan key:generate && php artisan migrate --force`
+4. `php artisan db:seed --class=Database\\Seeders\\GovernorateSeeder --force` ثم `RolePermissionSeeder` ثم `PricingSeeder` (**تجنّب** `DatabaseSeeder`/`DemoDataSeeder` في الإنتاج — بها حسابات وهمية بكلمة مرور `password`).
+5. `php artisan app:create-admin` لإنشاء أول حساب Super Admin حقيقي.
+6. وجّه Document Root لمجلد `public/` فقط.
+7. أضف Cron Job واحد لـ `schedule:run` وآخر لـ `queue:work --stop-when-empty` كل دقيقة (التفاصيل والأسطر الجاهزة في docs/08 § 8.2.3).
+8. `php artisan storage:link`
 
 ## هيكل الكود
 
@@ -86,6 +113,8 @@ app/Models/         نماذج Eloquent (شحنات، عهدة، محفظة، ت
 app/Services/        منطق الأعمال الأساسي (PricingService, ShipmentLifecycleService, CashService, WalletService, SettlementService)
 app/Http/Controllers/ مقسّمة حسب البورتال: Admin, Merchant, Agent, Branch, Accountant, Driver, Api/V1, Public
 app/Imports/          استيراد Excel الجماعي (Queued + Chunked)
+app/Console/Commands/  أوامر Artisan (مثل app:create-admin)
+deploy/                سكريبت التثبيت الجاهز لـ cPanel (cpanel-install.sh)
 database/migrations/  مخطط قاعدة البيانات الكامل
 database/seeders/     محافظات مصر (27) + الأدوار والصلاحيات + بيانات تجريبية
 resources/views/      Blade + Bootstrap 5 RTL لكل بورتال
